@@ -11,10 +11,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuración
+# ==========================================
+# CONFIGURACIÓN Y RUTAS
+# ==========================================
 BASE_URL = os.getenv("BASE_URL", "https://www.losmundialesdefutbol.com/mundiales.php")
-
-# Rutas de tracking
 TRACK_MUNDIALES = "data/tracking/mundiales_visitados.csv"
 TRACK_PARTIDOS = "data/tracking/partidos_visitados.csv"
 
@@ -38,6 +38,7 @@ def guardar_datos(datos_dict, nombre_archivo):
     df.to_csv(ruta, mode='a', header=not os.path.exists(ruta), index=False, encoding='utf-8')
 
 def obtener_soup(url):
+    """Petición robusta evadiendo Cloudflare con curl_cffi."""
     headers_dinamicos = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -62,7 +63,7 @@ def obtener_soup(url):
             print(f"Error HTTP en {url}: {response.status_code}")
             return None
 
-        # Pausa aleatoria para evadir detección (10 a 25 segundos)
+        # Pausa aleatoria para cuidar la IP (10 a 25 segundos)
         retraso = random.uniform(5, 10)
         print(f"    [Esperando {retraso:.1f}s simulando humano...]")
         time.sleep(retraso) 
@@ -109,7 +110,7 @@ def procesar_detalle_partido(url_partido):
                     sale = cols[4].text.strip()
                     eventos["Cambios"].append(f"Min {minuto}: Entra {entra} | Sale {sale}")
 
-    # Goles (buscando el icono de la pelota)
+    # Goles
     divs_goles = soup.find_all('div', class_=lambda c: c and 'w-50' in c)
     for div in divs_goles:
         if div.find('img', src=lambda s: s and 'ball.jpg' in s):
@@ -128,21 +129,27 @@ def procesar_resultados(url_resultados, anio_mundial, partidos_visitados):
     if not soup:
         return
 
-    bloques_fecha = soup.find_all('h3', string=lambda text: text and 'Fecha:' in text)
+    # Búsqueda robusta de fechas
+    bloques_fecha = soup.find_all(lambda tag: tag.name == 'h3' and 'Fecha:' in tag.text)
     archivo_partidos = f"partidos_{anio_mundial}.csv"
+
+    if not bloques_fecha:
+        print("      [!] ADVERTENCIA: No se encontraron fechas/partidos en esta página.")
+        return
 
     for bloque in bloques_fecha:
         fecha_tag = bloque.find('strong')
         fecha = fecha_tag.text.strip() if fecha_tag else "Desconocida"
         contenedor_dia = bloque.parent
+        
         filas_partidos = contenedor_dia.find_all('div', class_=lambda c: c and 'margen-y3' in c and 'pad-y5' in c)
         
         for fila in filas_partidos:
-            num_tag = fila.find('div', class_='wpx-30')
+            num_tag = fila.find('div', class_=lambda c: c and 'wpx-30' in c)
             if not num_tag: continue
             num_partido = num_tag.text.replace('.', '').strip()
             
-            etapa_tag = fila.find('div', class_='wpx-170')
+            etapa_tag = fila.find('div', class_=lambda c: c and 'wpx-170' in c)
             etapa = etapa_tag.text.strip() if etapa_tag else "Desconocida"
             
             equipos_tags = fila.find_all('div', style=lambda s: s and 'width: 129px' in s)
@@ -150,7 +157,7 @@ def procesar_resultados(url_resultados, anio_mundial, partidos_visitados):
             equipo_local = equipos_tags[0].text.strip()
             equipo_visitante = equipos_tags[1].text.strip()
                 
-            marcador_tag = fila.find('div', class_='wpx-60')
+            marcador_tag = fila.find('div', class_=lambda c: c and 'wpx-60' in c)
             link_partido = ""
             marcador = "N/A"
             if marcador_tag and marcador_tag.find('a'):
@@ -158,7 +165,6 @@ def procesar_resultados(url_resultados, anio_mundial, partidos_visitados):
                 marcador = enlace.text.strip()
                 link_partido = urljoin(url_resultados, enlace['href']) 
             
-            # Si ya procesamos este partido exacto, lo saltamos
             if link_partido and link_partido in partidos_visitados:
                 print(f"      [Saltando partido ya visitado: {equipo_local} vs {equipo_visitante}]")
                 continue
@@ -170,7 +176,7 @@ def procesar_resultados(url_resultados, anio_mundial, partidos_visitados):
                     textos = " ".join(div_ex.stripped_strings)
                     info_extra += f"[{textos}] "
 
-            # --- LLAMADA AL NIVEL 4 ---
+            # Llamada al nivel 4
             eventos_partido = {"Goles": [], "Tarjetas": [], "Cambios": []}
             if link_partido:
                 eventos_partido = procesar_detalle_partido(link_partido)
@@ -190,7 +196,6 @@ def procesar_resultados(url_resultados, anio_mundial, partidos_visitados):
                 "URL_Partido": link_partido
             }
 
-            # Guardar el partido y marcarlo como visitado
             guardar_datos(datos_completos, archivo_partidos)
             if link_partido:
                 guardar_visitado(TRACK_PARTIDOS, link_partido)
@@ -205,7 +210,27 @@ def procesar_mundial(url_mundial, anio_mundial):
     if not soup:
         return
 
-    # Extraer Grupos (Simple)
+    # 1. Resumen General del Mundial
+    datos_generales = {"Año": anio_mundial, "URL": url_mundial}
+    campeon_tag = soup.find('span', class_='size-11')
+    if campeon_tag and campeon_tag.find('a'):
+        datos_generales['Campeón'] = campeon_tag.find('a').text.strip()
+    else:
+        datos_generales['Campeón'] = "Desconocido"
+
+    stats_p = soup.find('p', class_='margen-l10')
+    if stats_p:
+        for linea in stats_p.stripped_strings:
+            if ':' in linea:
+                partes = linea.split(':', 1)
+                clave = partes[0].replace('-', '').strip() 
+                valor = partes[1].strip()
+                if clave in ['Organizador', 'Selecciones', 'Partidos', 'Goles']:
+                    datos_generales[clave] = valor
+                    
+    guardar_datos(datos_generales, "resumen_mundiales.csv")
+
+    # 2. Extraer Grupos
     titulo_grupos = soup.find(lambda tag: tag.name == 'h3' and 'Grupos y Planteles' in tag.text)
     if titulo_grupos:
         tabla_grupos = titulo_grupos.find_next('table')
@@ -226,7 +251,7 @@ def procesar_mundial(url_mundial, anio_mundial):
                         }, archivo_grupos)
 
 # ==========================================
-# NIVEL 1: Página Principal (Punto de Entrada)
+# NIVEL 1: Página Principal
 # ==========================================
 def iniciar_scraper(inicio, fin):
     asegurar_directorios()
@@ -241,7 +266,6 @@ def iniciar_scraper(inicio, fin):
     enlaces = soup.find_all('a', href=True)
     lista_mundiales = []
     
-    # Recolectar todos los mundiales
     for enlace in enlaces:
         href = enlace['href']
         if href.startswith('mundiales/') and href.endswith('_mundial.php'):
@@ -256,18 +280,15 @@ def iniciar_scraper(inicio, fin):
                     "url_resultados": url_resultados
                 })
                 
-    # Aplicar el recorte (sharding) para las VMs
+    # Sharding para las VMs
     lote_mundiales = lista_mundiales[inicio:fin]
     print(f"Lote asignado: {len(lote_mundiales)} mundiales (Índices del {inicio} al {fin-1}).\n" + "-"*40)
     
     for m in lote_mundiales:
         if m['url_mundial'] not in mundiales_visitados:
-            # 1. Sacamos Grupos
             procesar_mundial(m['url_mundial'], m['anio'])
-            # 2. Sacamos Partidos y Detalles
             procesar_resultados(m['url_resultados'], m['anio'], partidos_visitados)
             
-            # Marcamos Mundial como terminado
             guardar_visitado(TRACK_MUNDIALES, m['url_mundial'])
             mundiales_visitados.add(m['url_mundial'])
         else:

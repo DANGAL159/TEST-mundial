@@ -26,6 +26,13 @@ pip install -r requirements.txt
 
 # 8. Correr el programa
 cd proyecto
+DAN 0-7
 python src/scraper.py --inicio 0 --fin 1
-python src/scraper.py --inicio 2 --fin 2
-python src/scraper.py --inicio 1 --fin 3
+python src/scraper.py --inicio 1 --fin 2
+python src/scraper.py --inicio 2 --fin 3
+MAT 7-14
+python src/scraper.py --inicio 3 --fin 4
+python src/scraper.py --inicio 4 --fin 5
+ALE 14-22
+python src/scraper.py --inicio 5 --fin 8
+python src/scraper.py --inicio 6 --fin 7
