@@ -1,4 +1,4 @@
-# DESDE PROYECTO1-PT2
+# DESDE TEST-mundial
 
 # 1. Actualizar índice de paquetes
 sudo apt update
@@ -21,6 +21,8 @@ pip install --upgrade pip
 
 # 7. Instalar dependencias desde requirements.txt
 pip install -r requirements.txt
+
+# Desde proyecto
 
 # 8. Correr el programa
 cd proyecto
