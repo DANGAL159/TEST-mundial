@@ -28,16 +28,16 @@ pip install -r requirements.txt
 ```bash
 cd proyecto
 
-DAN 0-7
-python src/scraper.py --inicio 1 --fin 3
-python src/scraper.py --inicio 3 --fin 5
-python src/scraper.py --inicio 5 --fin 7
+DAN 0-12
+python src/scraper.py --inicio 0 --fin 4
+python src/scraper.py --inicio 4 --fin 8
+python src/scraper.py --inicio 8 --fin 12
 
-MAT 7-14
-python src/scraper.py --inicio 7 --fin 14
+MAT 12-20
+python src/scraper.py --inicio 12 --fin 16
+python src/scraper.py --inicio 16 --fin 20
 
-
-ALE 14-23
-python src/scraper.py --inicio 14 --fin 23
+ALE 20-26
+python src/scraper.py --inicio 20 --fin 26
 
 ```
