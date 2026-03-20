@@ -37,7 +37,7 @@ MAT 7-14
 python src/scraper.py --inicio 7 --fin 14
 
 
-ALE 14-22
-python src/scraper.py --inicio 14 --fin 22
+ALE 14-23
+python src/scraper.py --inicio 14 --fin 23
 
 ```
