@@ -63,7 +63,7 @@ def obtener_soup(url):
             return None
 
         # Pausa aleatoria para evadir detección (10 a 25 segundos)
-        retraso = random.uniform(10, 25)
+        retraso = random.uniform(5, 10)
         print(f"    [Esperando {retraso:.1f}s simulando humano...]")
         time.sleep(retraso) 
         

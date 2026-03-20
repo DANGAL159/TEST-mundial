@@ -26,4 +26,6 @@ pip install -r requirements.txt
 
 # 8. Correr el programa
 cd proyecto
-python src/scraper.py --inicio 0 --fin 15
+python src/scraper.py --inicio 0 --fin 1
+python src/scraper.py --inicio 2 --fin 2
+python src/scraper.py --inicio 1 --fin 3
