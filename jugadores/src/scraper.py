@@ -12,7 +12,6 @@ BASE_URL = "https://www.losmundialesdefutbol.com/jugadores.php"
 TRACK_PAISES = "data/tracking/paises_visitados_jugadores.csv"
 TRACK_JUGADORES = "data/tracking/jugadores_visitados.csv"
 
-# PLANTILLA QUEMADA (Basada en el perfil más completo: Lionel Messi)
 PLANTILLA_MESSI = [
     "URL", "Selección", "Nombre Principal", "Nombre completo", "Fecha de Nacimiento", 
     "Lugar de nacimiento", "Posición", "Números de camiseta", "Altura", "Apodo", 
@@ -41,7 +40,6 @@ def obtener_soup(url):
     try:
         res = requests.get(url, headers=headers, impersonate="chrome120", timeout=20)
         
-        # LOGS DE ERRORES HTTP
         if res.status_code == 403: 
             sys.exit(f"\n🚫 ===== 403 BLOQUEO =====\nLa IP ha sido bloqueada al intentar acceder a: {url}")
             
@@ -53,7 +51,6 @@ def obtener_soup(url):
         return BeautifulSoup(res.text, 'html.parser')
         
     except Exception as e:
-        # LOGS DE CAÍDAS DE RED O TIMEOUTS
         print(f"    🔌 [ERROR DE RED / TIMEOUT] Saltando URL: {url} -> Detalle: {e}")
         return None
 
@@ -62,10 +59,10 @@ def procesar_jugador(url_jugador, url_pais):
     
     try:
         soup = obtener_soup(url_jugador)
+        # Si no hay soup (por error 500, timeout, etc.), devolvemos Falso
         if not soup: 
-            return
+            return False
 
-        # 1. Crear diccionario con la plantilla base (todo en blanco)
         datos_jugador = {col: "" for col in PLANTILLA_MESSI}
         datos_jugador["URL"] = url_jugador
         datos_jugador["Selección"] = url_pais.split('/')[-1].replace('.php', '').replace('_', ' ').title()
@@ -73,7 +70,6 @@ def procesar_jugador(url_jugador, url_pais):
         nombre_tag = soup.find('h2', class_='t-enc-1')
         if nombre_tag: datos_jugador['Nombre Principal'] = nombre_tag.text.strip()
 
-        # 2. Datos Personales
         tabla_personal = soup.find('div', class_='rd-100-70')
         if tabla_personal:
             for fila in tabla_personal.find_all('tr', class_='a-top'):
@@ -81,11 +77,9 @@ def procesar_jugador(url_jugador, url_pais):
                 if len(cols) == 2:
                     clave = cols[0].text.replace(':', '').strip()
                     valor = " | ".join(cols[1].stripped_strings)
-                    # Solo guarda si la clave existe en la plantilla de Messi
                     if clave in datos_jugador:
                         datos_jugador[clave] = valor
 
-        # 3. Estadísticas Generales
         div_mundiales = soup.find('div', class_='rd-100-60')
         if div_mundiales and div_mundiales.find('tr', class_='pad-y8'):
             tds = div_mundiales.find('tr', class_='pad-y8').find_all('td')
@@ -100,7 +94,6 @@ def procesar_jugador(url_jugador, url_pais):
                 datos_jugador['Goles Anotados'] = tds[0].text.replace('Goles Anotados', '').replace('Gol Anotado', '').strip()
                 datos_jugador['Promedio Gol'] = tds[1].text.replace('Promedio de Gol', '').strip()
 
-        # 4. Totales Detallados
         celda_totales = soup.find('td', string=lambda text: text and 'Totales:' in text)
         if celda_totales:
             valores = celda_totales.parent.find_all('strong')
@@ -114,28 +107,42 @@ def procesar_jugador(url_jugador, url_pais):
                 datos_jugador['Partidos Empatados'] = valores[10].text.strip()
                 datos_jugador['Partidos Perdidos'] = valores[11].text.strip()
 
-        # 5. GUARDADO INMEDIATO
         nombre_archivo = f"data/processed/jugadores/jugadores_{url_pais.split('/')[-1].replace('.php', '.csv')}"
         df = pd.DataFrame([datos_jugador])
         df.to_csv(nombre_archivo, mode='a', header=not os.path.exists(nombre_archivo), index=False, encoding='utf-8')
+        
+        # Guardamos en el tracking SOLO si todo fue exitoso
         guardar_visitado(TRACK_JUGADORES, url_jugador)
+        return True
         
     except Exception as e:
-        # LOG PARA EXCEPCIONES GENÉRICAS (Si cambia el HTML de un jugador específico)
         print(f"    💥 [ERROR DE CÓDIGO] Falló el parseo de {url_jugador} -> Detalle: {e}")
+        return False
 
 def procesar_pais(url_pais, jugadores_visitados):
     print(f"-> Explorando selección: {url_pais}")
     soup = obtener_soup(url_pais)
-    if not soup: return
+    
+    # Si la página del país falla, devolvemos Falso inmediatamente
+    if not soup: 
+        return False
 
+    exito_total_pais = True
+    
     for enlace in soup.find_all('a', href=True):
         href = enlace['href']
         if '/jugadores/' in href and href.endswith('.php'):
             url_jugador = urljoin("https://www.losmundialesdefutbol.com", href)
             if url_jugador not in jugadores_visitados:
-                procesar_jugador(url_jugador, url_pais)
-                jugadores_visitados.add(url_jugador)
+                # Extraemos el jugador y verificamos si fue exitoso
+                exito_jugador = procesar_jugador(url_jugador, url_pais)
+                if exito_jugador:
+                    jugadores_visitados.add(url_jugador)
+                else:
+                    # Si un solo jugador falla, el país no puede marcarse como completado
+                    exito_total_pais = False
+
+    return exito_total_pais
 
 def iniciar_scraper(inicio, fin):
     asegurar_directorios()
@@ -155,13 +162,17 @@ def iniciar_scraper(inicio, fin):
 
     for url_pais in lote:
         if url_pais not in paises_visitados:
-            procesar_pais(url_pais, jugadores_visitados)
-            guardar_visitado(TRACK_PAISES, url_pais)
+            exito_pais = procesar_pais(url_pais, jugadores_visitados)
+            # Solo guardamos el país como visitado si NADIE dio error
+            if exito_pais:
+                guardar_visitado(TRACK_PAISES, url_pais)
+                paises_visitados.add(url_pais)
+            else:
+                print(f"    ⚠️ [PAÍS INCOMPLETO] Hubo errores en {url_pais}. Se reintentará en la próxima ejecución.")
         else:
             print(f"⏭️  Saltando país ya visitado completamente: {url_pais}")
 
-    # LOG DE FINALIZACIÓN NORMAL
-    print(f"\n✅ ¡Trabajo terminado! Se completó la extracción del lote asignado (Índices {inicio} a {fin-1}).")
+    print(f"\n✅ ¡Trabajo terminado! Se completó la ejecución del lote asignado.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -172,5 +183,5 @@ if __name__ == "__main__":
     try:
         iniciar_scraper(args.inicio, args.fin)
     except KeyboardInterrupt:
-        print("\n🛑 [INTERRUPCIÓN] Has presionado Ctrl+C. El progreso hasta el último jugador se ha guardado correctamente.")
+        print("\n🛑 [INTERRUPCIÓN] Has presionado Ctrl+C. El progreso hasta el último jugador extraído con éxito se ha guardado correctamente.")
         sys.exit(0)
