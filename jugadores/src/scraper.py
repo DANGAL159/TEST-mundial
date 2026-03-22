@@ -33,30 +33,23 @@ def guardar_visitado(ruta_csv, url):
     pd.DataFrame([{"url": url}]).to_csv(ruta_csv, mode='a', header=not os.path.exists(ruta_csv), index=False)
 
 def obtener_soup(url):
-    # Lista de User-Agents modernos (Windows, Mac, Linux)
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    ]
-
-    # Cabeceras dinámicas y completas simulando un navegador real
+    # Identidad única, sólida y coherente (Edge en Windows)
     headers_dinamicos = {
-        "User-Agent": random.choice(user_agents), # Elige uno al azar por cada petición
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7",
         "Referer": "https://www.losmundialesdefutbol.com/",
-        "Upgrade-Insecure-Requests": "1",
+        "Sec-Ch-Ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Microsoft Edge";v="146"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
+        "Upgrade-Insecure-Requests": "1"
     }
-
     try:
-        # Usamos curl_cffi con las cabeceras falsificadas
+        # impersonate="chrome120" combina perfecto con un User-Agent de Windows
         res = requests.get(url, headers=headers_dinamicos, impersonate="chrome120", timeout=20)
         
         if res.status_code == 403: 
@@ -66,13 +59,14 @@ def obtener_soup(url):
             print(f"    ⚠️ [HTTP {res.status_code}] Página no encontrada o error en servidor: {url}")
             return None
             
+        # Pausa aleatoria para cuidar la IP
         time.sleep(random.uniform(5, 12)) 
         return BeautifulSoup(res.text, 'html.parser')
         
     except Exception as e:
         print(f"    🔌 [ERROR DE RED / TIMEOUT] Saltando URL: {url} -> Detalle: {e}")
         return None
-
+        
 def procesar_jugador(url_jugador, url_pais):
     print(f"    -> Extrayendo: {url_jugador}")
     
