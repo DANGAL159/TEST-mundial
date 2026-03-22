@@ -40,72 +40,89 @@ def obtener_soup(url):
     }
     try:
         res = requests.get(url, headers=headers, impersonate="chrome120", timeout=20)
-        if res.status_code == 403: sys.exit("\n===== 403 BLOQUEO =====")
-        if res.status_code != 200: return None
+        
+        # LOGS DE ERRORES HTTP
+        if res.status_code == 403: 
+            sys.exit(f"\n🚫 ===== 403 BLOQUEO =====\nLa IP ha sido bloqueada al intentar acceder a: {url}")
+            
+        if res.status_code != 200: 
+            print(f"    ⚠️ [HTTP {res.status_code}] Página no encontrada o error en servidor: {url}")
+            return None
+            
         time.sleep(random.uniform(5, 12)) 
         return BeautifulSoup(res.text, 'html.parser')
-    except Exception:
+        
+    except Exception as e:
+        # LOGS DE CAÍDAS DE RED O TIMEOUTS
+        print(f"    🔌 [ERROR DE RED / TIMEOUT] Saltando URL: {url} -> Detalle: {e}")
         return None
 
 def procesar_jugador(url_jugador, url_pais):
     print(f"    -> Extrayendo: {url_jugador}")
-    soup = obtener_soup(url_jugador)
-    if not soup: return
+    
+    try:
+        soup = obtener_soup(url_jugador)
+        if not soup: 
+            return
 
-    # 1. Crear diccionario con la plantilla base (todo en blanco)
-    datos_jugador = {col: "" for col in PLANTILLA_MESSI}
-    datos_jugador["URL"] = url_jugador
-    datos_jugador["Selección"] = url_pais.split('/')[-1].replace('.php', '').replace('_', ' ').title()
+        # 1. Crear diccionario con la plantilla base (todo en blanco)
+        datos_jugador = {col: "" for col in PLANTILLA_MESSI}
+        datos_jugador["URL"] = url_jugador
+        datos_jugador["Selección"] = url_pais.split('/')[-1].replace('.php', '').replace('_', ' ').title()
 
-    nombre_tag = soup.find('h2', class_='t-enc-1')
-    if nombre_tag: datos_jugador['Nombre Principal'] = nombre_tag.text.strip()
+        nombre_tag = soup.find('h2', class_='t-enc-1')
+        if nombre_tag: datos_jugador['Nombre Principal'] = nombre_tag.text.strip()
 
-    # 2. Datos Personales
-    tabla_personal = soup.find('div', class_='rd-100-70')
-    if tabla_personal:
-        for fila in tabla_personal.find_all('tr', class_='a-top'):
-            cols = fila.find_all('td')
-            if len(cols) == 2:
-                clave = cols[0].text.replace(':', '').strip()
-                valor = " | ".join(cols[1].stripped_strings)
-                # Solo guarda si la clave existe en la plantilla de Messi
-                if clave in datos_jugador:
-                    datos_jugador[clave] = valor
+        # 2. Datos Personales
+        tabla_personal = soup.find('div', class_='rd-100-70')
+        if tabla_personal:
+            for fila in tabla_personal.find_all('tr', class_='a-top'):
+                cols = fila.find_all('td')
+                if len(cols) == 2:
+                    clave = cols[0].text.replace(':', '').strip()
+                    valor = " | ".join(cols[1].stripped_strings)
+                    # Solo guarda si la clave existe en la plantilla de Messi
+                    if clave in datos_jugador:
+                        datos_jugador[clave] = valor
 
-    # 3. Estadísticas Generales
-    div_mundiales = soup.find('div', class_='rd-100-60')
-    if div_mundiales and div_mundiales.find('tr', class_='pad-y8'):
-        tds = div_mundiales.find('tr', class_='pad-y8').find_all('td')
-        if len(tds) >= 2:
-            datos_jugador['Mundiales Jugados'] = tds[0].text.replace('Mundiales', '').replace('Mundial', '').strip()
-            datos_jugador['Partidos Jugados'] = tds[1].text.replace('Partidos Jugados', '').replace('Partido Jugado', '').strip()
+        # 3. Estadísticas Generales
+        div_mundiales = soup.find('div', class_='rd-100-60')
+        if div_mundiales and div_mundiales.find('tr', class_='pad-y8'):
+            tds = div_mundiales.find('tr', class_='pad-y8').find_all('td')
+            if len(tds) >= 2:
+                datos_jugador['Mundiales Jugados'] = tds[0].text.replace('Mundiales', '').replace('Mundial', '').strip()
+                datos_jugador['Partidos Jugados'] = tds[1].text.replace('Partidos Jugados', '').replace('Partido Jugado', '').strip()
 
-    div_goles = soup.find('div', class_='rd-100-40')
-    if div_goles and div_goles.find('tr', class_='pad-y8'):
-        tds = div_goles.find('tr', class_='pad-y8').find_all('td')
-        if len(tds) >= 2:
-            datos_jugador['Goles Anotados'] = tds[0].text.replace('Goles Anotados', '').replace('Gol Anotado', '').strip()
-            datos_jugador['Promedio Gol'] = tds[1].text.replace('Promedio de Gol', '').strip()
+        div_goles = soup.find('div', class_='rd-100-40')
+        if div_goles and div_goles.find('tr', class_='pad-y8'):
+            tds = div_goles.find('tr', class_='pad-y8').find_all('td')
+            if len(tds) >= 2:
+                datos_jugador['Goles Anotados'] = tds[0].text.replace('Goles Anotados', '').replace('Gol Anotado', '').strip()
+                datos_jugador['Promedio Gol'] = tds[1].text.replace('Promedio de Gol', '').strip()
 
-    # 4. Totales Detallados
-    celda_totales = soup.find('td', string=lambda text: text and 'Totales:' in text)
-    if celda_totales:
-        valores = celda_totales.parent.find_all('strong')
-        if len(valores) >= 12:
-            datos_jugador['Titular'] = valores[2].text.strip()
-            datos_jugador['Capitán'] = valores[3].text.strip()
-            datos_jugador['Banca (No Jugó)'] = valores[4].text.strip()
-            datos_jugador['Amarillas'] = valores[7].text.strip()
-            datos_jugador['Rojas'] = valores[8].text.strip()
-            datos_jugador['Partidos Ganados'] = valores[9].text.strip()
-            datos_jugador['Partidos Empatados'] = valores[10].text.strip()
-            datos_jugador['Partidos Perdidos'] = valores[11].text.strip()
+        # 4. Totales Detallados
+        celda_totales = soup.find('td', string=lambda text: text and 'Totales:' in text)
+        if celda_totales:
+            valores = celda_totales.parent.find_all('strong')
+            if len(valores) >= 12:
+                datos_jugador['Titular'] = valores[2].text.strip()
+                datos_jugador['Capitán'] = valores[3].text.strip()
+                datos_jugador['Banca (No Jugó)'] = valores[4].text.strip()
+                datos_jugador['Amarillas'] = valores[7].text.strip()
+                datos_jugador['Rojas'] = valores[8].text.strip()
+                datos_jugador['Partidos Ganados'] = valores[9].text.strip()
+                datos_jugador['Partidos Empatados'] = valores[10].text.strip()
+                datos_jugador['Partidos Perdidos'] = valores[11].text.strip()
 
-    # 5. GUARDADO INMEDIATO (El seguro contra Ctrl+C)
-    nombre_archivo = f"data/processed/jugadores/jugadores_{url_pais.split('/')[-1].replace('.php', '.csv')}"
-    df = pd.DataFrame([datos_jugador])
-    df.to_csv(nombre_archivo, mode='a', header=not os.path.exists(nombre_archivo), index=False, encoding='utf-8')
-    guardar_visitado(TRACK_JUGADORES, url_jugador)
+        # 5. GUARDADO INMEDIATO
+        nombre_archivo = f"data/processed/jugadores/jugadores_{url_pais.split('/')[-1].replace('.php', '.csv')}"
+        df = pd.DataFrame([datos_jugador])
+        df.to_csv(nombre_archivo, mode='a', header=not os.path.exists(nombre_archivo), index=False, encoding='utf-8')
+        guardar_visitado(TRACK_JUGADORES, url_jugador)
+        
+    except Exception as e:
+        # LOG PARA EXCEPCIONES GENÉRICAS (Si cambia el HTML de un jugador específico)
+        print(f"    💥 [ERROR DE CÓDIGO] Falló el parseo de {url_jugador} -> Detalle: {e}")
 
 def procesar_pais(url_pais, jugadores_visitados):
     print(f"-> Explorando selección: {url_pais}")
@@ -118,7 +135,6 @@ def procesar_pais(url_pais, jugadores_visitados):
             url_jugador = urljoin("https://www.losmundialesdefutbol.com", href)
             if url_jugador not in jugadores_visitados:
                 procesar_jugador(url_jugador, url_pais)
-                # Al estar jugador_visitados.add aquí, el guardado en CSV de la función anterior ya ocurrió.
                 jugadores_visitados.add(url_jugador)
 
 def iniciar_scraper(inicio, fin):
@@ -142,11 +158,19 @@ def iniciar_scraper(inicio, fin):
             procesar_pais(url_pais, jugadores_visitados)
             guardar_visitado(TRACK_PAISES, url_pais)
         else:
-            print(f"Saltando país ya visitado: {url_pais}")
+            print(f"⏭️  Saltando país ya visitado completamente: {url_pais}")
+
+    # LOG DE FINALIZACIÓN NORMAL
+    print(f"\n✅ ¡Trabajo terminado! Se completó la extracción del lote asignado (Índices {inicio} a {fin-1}).")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--inicio", type=int, default=0)
     parser.add_argument("--fin", type=int, default=1000)
     args = parser.parse_args()
-    iniciar_scraper(args.inicio, args.fin)
+    
+    try:
+        iniciar_scraper(args.inicio, args.fin)
+    except KeyboardInterrupt:
+        print("\n🛑 [INTERRUPCIÓN] Has presionado Ctrl+C. El progreso hasta el último jugador se ha guardado correctamente.")
+        sys.exit(0)
